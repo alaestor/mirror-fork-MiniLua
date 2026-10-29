@@ -265,6 +265,9 @@ class Minifier:
             # A kept short comment needs a terminator if its newline was removed.
             # Long comments already delimit themselves and need no extra layout.
             if tok.type in (TokenType.COMMENT, TokenType.LONG_COMMENT):
+                # A preceding minus must not become part of the comment opener.
+                if prev is not None and prev.type == TokenType.OP and prev.value == "-":
+                    parts.append(" ")
                 parts.append(tok.value)
                 if (tok.type == TokenType.COMMENT and
                         (index + 1 == len(tokens) or tokens[index + 1].type != TokenType.NEWLINE)):
