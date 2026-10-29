@@ -115,3 +115,34 @@ def test_hex_escape_has_runtime_specific_bytes(runtime, tmp_path):
 def test_escaped_backslash_does_not_disable_portable_compression():
     literal = r'"\\x\065\066\067"'
     assert len(minify_string(literal)) < len(literal)
+
+
+@pytest.mark.parametrize("literal", [
+    "[[\r\nhello]]", "[[a\r\nb]]", "[=[\r\na\r\nb]=]",
+    "[[\n\nhello]]", "[[a\nb]]", "[[\rhello]]", "[[a\rb]]",
+    "[[\n\rhello]]", "[[a\n\rb]]", "[=[é\r\nb]=]",
+])
+def test_long_string_newlines_preserve_bytes(runtime, tmp_path, literal):
+    source = f"local s={literal};print(#s);for i=1,#s do print(string.byte(s,i)) end"
+    expected = execute(runtime, source, tmp_path)
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+@pytest.mark.parametrize("literal", ["[[\rhello]]", "[[a\rb]]", "[[a\n\rb]]"])
+def test_dialect_sensitive_long_newlines_remain_unchanged(literal):
+    assert minify_string(literal) == literal
+
+
+def test_known_long_string_newline_bytes(runtime, tmp_path):
+    source = "local s=[=[\r\na\r\nb]=];print(#s);for i=1,#s do print(string.byte(s,i)) end"
+    expected = b"3\n97\n10\n98\n"
+    assert execute(runtime, source, tmp_path) == expected
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+def test_known_bare_cr_long_string_bytes(runtime, tmp_path):
+    source = "local s=[=[\ra\rb]=];print(#s);for i=1,#s do print(string.byte(s,i)) end"
+    version = execute(runtime, "print(_VERSION)", tmp_path)
+    expected = b"4\n13\n97\n13\n98\n" if b"Luau" in version else b"3\n97\n10\n98\n"
+    assert execute(runtime, source, tmp_path) == expected
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected

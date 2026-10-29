@@ -275,7 +275,13 @@ def _compress_long_string(s: str) -> str:
 
     content = s[len(open_bracket):close_pos]
 
-    # Long strings strip exactly one leading newline
+    # Lua normalizes bare CR and LFCR too, but Luau preserves those bytes.
+    # CRLF and LF agree across the dialects, so only rewrite those forms.
+    content = content.replace("\r\n", "\n")
+    if "\r" in content:
+        return s
+
+    # Long strings discard exactly one initial normalized newline.
     if content.startswith("\n"):
         content = content[1:]
 
