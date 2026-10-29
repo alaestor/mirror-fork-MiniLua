@@ -160,7 +160,7 @@ def cli(
         else:
             out_path = Path(output)
             try:
-                write_output(out_path, result.output, overwrite=True)
+                write_output(out_path, result.output, overwrite=overwrite)
                 if not quiet:
                     _ok(f"Written → {out_path}")
             except OSError as e:
