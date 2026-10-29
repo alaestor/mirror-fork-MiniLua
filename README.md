@@ -13,7 +13,6 @@
 
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](#testing)
 
 </div>
 
@@ -21,7 +20,7 @@
 
 ## Overview
 
-**minilua** is a production-ready Lua / Luau minifier written in Python. It reduces the size of Lua source files by stripping comments, collapsing whitespace, compressing string and number literals, and optionally renaming local variables — all while preserving 100% semantic equivalence of the output.
+**minilua** is a Lua / Luau source minifier written in Python. It can strip comments and whitespace, compress literals, and optionally rename local variables. Minification can change behavior in dialect-sensitive cases, so test the output with the Lua or Luau runtime you target before using it.
 
 Works with **Lua 5.1, 5.2, 5.3, 5.4** and **Luau** (Roblox), including executor/exploit environments.
 
@@ -35,13 +34,13 @@ Works with **Lua 5.1, 5.2, 5.3, 5.4** and **Luau** (Roblox), including executor/
 |---|---|
 | **Comment removal** | Single-line (`--`) and multi-line (`--[[ ]]`) comments |
 | **Whitespace stripping** | Spaces, tabs, redundant newlines |
-| **String compression** | Optimal quote style, escape normalization, long→short string conversion |
-| **Number compression** | `1.0→1`, `0.5→.5`, `1e+03→1e3`, `0x00FF→0xFF`, Luau `1_000→1000` |
-| **Local variable renaming** | Renames locals to single-letter names (`a`, `b`, `c`, …) |
+| **String compression** | Shortens literals where safe; preserves byte-string contents and leaves dialect-sensitive escapes unchanged |
+| **Number compression** | Shortens safe spellings, such as `1.0→1.` (still a float), `0.5→.5`, `1e+03→1e3`, `0x00FF→0xFF`, and Luau `1_000→1000` |
+| **Local variable renaming** | Parser-backed binding analysis renames supported local declarations and references |
 | **Executor globals protected** | `getrawmetatable`, `hookfunction`, `readfile`, `syn`, etc. are never renamed |
-| **Luau support** | `type`, `continue`, `export`, `::labels::`, type annotations |
-| **Safe separator logic** | Never produces `--` (comment), `[[` (long string), or merged keywords |
-| **Batch processing** | Glob patterns, recursive directory scan |
+| **Luau support** | `type`, `continue`, `export`, `::labels::`, and interpolated strings are tokenized; unsupported syntax is preserved |
+| **Token separation** | Keeps adjacent token spellings distinct, including dots, brackets, and comment openers |
+| **Batch processing** | Glob patterns, recursive directory scan, `.lua` and `.luau` directories |
 | **stdin / stdout** | Pipe-friendly for build pipelines |
 
 ---
@@ -79,6 +78,8 @@ cat script.lua | minilua - --stdout
 
 ## CLI Reference
 
+CLI diagnostics and statistics go to stderr; stdout contains source only. `--overwrite` controls replacement for stdin and file inputs. `--in-place` permits replacing the input itself, not an unrelated explicit output. Directory scans include `.lua` and `.luau` files, and batch output collisions are rejected before writing. `--no-whitespace` retains existing spaces and line breaks, and output ends with a newline.
+
 ```
 Usage: minilua [OPTIONS] [FILE|DIR|GLOB]...
 
@@ -101,7 +102,7 @@ Minification Options:
   --no-strings            Skip string literal compression
   --no-numbers            Skip number literal compression
   -R, --rename-locals     Rename local variables to short names
-  --keep-newlines         Preserve one newline per statement
+  --keep-newlines         Preserve source newlines while removing other whitespace
 
 Display:
   -q, --quiet             Suppress all output except errors
@@ -113,7 +114,7 @@ Display:
 ### Examples
 
 ```bash
-# Rename local variables (more aggressive, ~55–70% savings)
+# Rename local variables where the parser can safely analyze the source
 minilua script.lua --rename-locals
 
 # Keep comments (useful when debugging minified output)
@@ -171,6 +172,8 @@ if result.errors:
 | `preserve_names` | `set` | `None` | Extra names to never rename |
 | `keep_newlines` | `bool` | `False` | Preserve one newline per line |
 
+When renaming encounters unsupported syntax, the renamer skips the entire rename pass and reports a warning in `result.errors`. Ordinary minification still runs. This includes typed Luau declarations and parameters, type assertions, if-expressions, and interpolated strings. Interpolated strings retain their raw text during ordinary minification.
+
 ### `MinifyResult` fields
 
 | Field | Type | Description |
@@ -212,8 +215,10 @@ local hex = "\x68\x65\x6c\x6c\x6f"
 -- After
 local msg='Hello\tWorld'
 local raw='  multi-line content\n'
-local hex='hello'
+local hex="\x68\x65\x6c\x6c\x6f"
 ```
+
+The minifier preserves byte-string contents rather than rewriting arbitrary Unicode code points. It leaves `\x`, `\u`, and `\z` escapes unchanged because their meaning varies by Lua dialect.
 
 ### Number literals
 ```lua
@@ -225,7 +230,7 @@ local d = 0x00FF
 local e = 1_000_000  -- Luau
 
 -- After
-local a=1
+local a=1.
 local b=.5
 local c=1e3
 local d=0xFF
@@ -283,9 +288,8 @@ Source code
      │
      ▼
 ┌──────────────┐
-│   Renamer    │  (optional) Two-pass scope-tree renamer
-│  (Pass 1)    │  Builds lexical scope tree, assigns short names
-│  (Pass 2)    │  Substitutes NAME tokens using the shared tree
+│   Renamer    │  (optional) Parser-backed binding analysis
+│             │  Resolves local declarations and references
 └──────────────┘
      │
      ▼
@@ -333,16 +337,14 @@ lua_minifier/
 │   ├── lexer.py             Lua/Luau tokenizer
 │   ├── minifier.py          Pipeline engine & options
 │   ├── string_minifier.py   String & number compression
-│   └── renamer.py           Scope-tree local variable renamer
+│   └── renamer.py           Parser-backed local variable renamer
 │
 ├── utils/
 │   ├── __init__.py
 │   ├── formatter.py         Terminal stats output (color-aware)
 │   └── file_utils.py        File discovery, glob expansion, I/O
 │
-└── tests/
-    ├── test_minifier.py     102-test suite
-    └── sample.lua           Demo file
+└── tests/                    Unit, CLI, and runtime tests
 ```
 
 ---
@@ -353,21 +355,9 @@ lua_minifier/
 python -m pytest tests/ -v
 ```
 
-```
-102 passed in 0.18s
-```
+Runtime behavior tests use Lua or Luau executables found on `PATH`; tests that need an unavailable runtime are skipped. Run them against each target runtime version, since Lua versions differ in literal and language semantics.
 
-Test coverage includes:
-
-- Lexer tokenization (Lua 5.1–5.4, Luau syntax)
-- String escape decoding/encoding (`\n`, `\xHH`, `\u{HH}`, `\ddd`, `\z`)
-- Number compression (int, float, hex, hex-float, scientific, Luau separators)
-- Separator correctness (no merged keywords, no accidental `--` comments)
-- Comment and whitespace stripping / preservation
-- Variable renamer (locals, params, for-vars, shadowing, no collisions)
-- Executor global protection (80+ protected names)
-- Luau-specific syntax (`continue`, `type`, `export`, `::`)
-- Edge cases (empty input, deep nesting, large tables, null bytes in strings)
+The tests cover tokenization, literal handling, minification, renaming, CLI output, and file operations.
 
 ---
 
