@@ -175,17 +175,7 @@ def cli(
     input_list = list(inputs)
     out_dir = Path(output_dir) if output_dir else None
 
-    all_inputs = []
-    for pat in input_list:
-        p = Path(pat)
-        if p.is_dir():
-            if recursive:
-                all_inputs.extend(discover_files([str(p)], recursive=True))
-            else:
-                # List only top-level .lua files
-                all_inputs.extend(p.glob("*.lua"))
-        else:
-            all_inputs.extend(discover_files([pat], recursive=recursive))
+    all_inputs = discover_files(input_list, recursive=recursive)
 
     # Filter to only .lua / .luau files (unless user explicitly passes a file)
     lua_inputs = [

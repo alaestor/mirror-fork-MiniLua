@@ -18,16 +18,18 @@ def discover_files(patterns: List[str], recursive: bool = False) -> List[Path]:
     seen = set()
     result = []
     for pattern in patterns:
-        if recursive and "**" not in pattern:
-            # Auto-wrap for recursive directory expansion
-            p = Path(pattern)
-            if p.is_dir():
-                pattern = str(p / "**" / "*.lua")
-
-        matched = glob.glob(pattern, recursive=recursive)
-        if not matched:
-            # Treat as literal path even if it doesn't exist yet (for writing)
-            matched = [pattern]
+        path = Path(pattern)
+        if path.is_dir():
+            candidates = path.rglob("*") if recursive else path.iterdir()
+            matched = sorted(
+                p for p in candidates
+                if p.is_file() and p.suffix in (".lua", ".luau")
+            )
+        else:
+            matched = sorted(glob.glob(pattern, recursive=recursive))
+            if not matched and not glob.has_magic(pattern):
+                # Keep missing literal inputs so the CLI can report read errors.
+                matched = [pattern]
 
         for m in matched:
             resolved = Path(m).resolve()
