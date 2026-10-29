@@ -69,3 +69,22 @@ def test_line_comment_minification_preserves_lua_execution(ending):
         result = subprocess.run([lua, '-'], input=program.encode(), capture_output=True, timeout=3)
         assert result.returncode == 0, result.stderr
         assert result.stdout == b'1\n'
+
+
+@pytest.mark.parametrize('ending', LINE_ENDINGS)
+def test_z_escape_consumes_multiline_whitespace_without_ending_string(ending):
+    source = '"left\\z \t\v\f' + ending + '\t right" next'
+    tokens = Lexer(source).tokenize()
+    assert tokens[0].type == TokenType.STRING
+    assert tokens[0].value == source[:-5]
+    assert (tokens[2].value, tokens[2].line) == ('next', 2)
+
+
+def test_escaped_backslash_does_not_enable_z_whitespace_skipping():
+    with pytest.raises(LexerError, match='Unfinished string'):
+        Lexer('"left\\\\z\nright"').tokenize()
+
+
+def test_z_escape_stops_at_first_non_whitespace_character():
+    with pytest.raises(LexerError, match='Unfinished string'):
+        Lexer('"left\\z  right\n"').tokenize()

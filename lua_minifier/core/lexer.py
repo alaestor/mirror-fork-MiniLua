@@ -244,6 +244,9 @@ class Lexer:
                 if self.pos < len(self.source):
                     escaped = self._advance()
                     buf.append(escaped)
+                    if escaped == "z":
+                        while self.pos < len(self.source) and self._peek() in " \t\v\f\r\n":
+                            buf.append(self._advance())
                     if escaped in "\r\n" and self._peek() in ("\r", "\n") and self._peek() != escaped:
                         buf.append(self._advance())
                 continue
