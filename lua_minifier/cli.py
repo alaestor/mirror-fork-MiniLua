@@ -53,9 +53,9 @@ BANNER = r"""
 def _cprint(text: str, color: str = "", bold: bool = False):
     if HAS_COLOR:
         prefix = (Style.BRIGHT if bold else "") + color
-        print(prefix + text + Style.RESET_ALL)
+        print(prefix + text + Style.RESET_ALL, file=sys.stderr)
     else:
-        print(text)
+        print(text, file=sys.stderr)
 
 
 def _err(msg: str):
@@ -127,7 +127,7 @@ def cli(
         if HAS_COLOR:
             _cprint(BANNER, Fore.CYAN, bold=True)
         else:
-            print(BANNER)
+            print(BANNER, file=sys.stderr)
 
     # Build options
     opts = MinifyOptions(
@@ -167,8 +167,8 @@ def cli(
                 _err(str(e)); sys.exit(1)
 
         if not quiet and not stdout:
-            print()
-            print(color_stats(result) if HAS_COLOR else format_stats(result))
+            print(file=sys.stderr)
+            print(color_stats(result) if HAS_COLOR else format_stats(result), file=sys.stderr)
         return
 
     # File mode
@@ -245,12 +245,12 @@ def cli(
 
         if not quiet:
             if HAS_COLOR:
-                print(color_stats(result, str(inp_path.name)))
+                print(color_stats(result, str(inp_path.name)), file=sys.stderr)
             else:
-                print(format_stats(result, str(inp_path.name)))
+                print(format_stats(result, str(inp_path.name)), file=sys.stderr)
             if not stdout:
                 _ok(f"→ {out_path}")
-            print()
+            print(file=sys.stderr)
 
     # Summary 
     if not quiet and len(lua_inputs) > 1:
