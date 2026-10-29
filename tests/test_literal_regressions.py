@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from lua_minifier.core import Minifier
+from lua_minifier.core.lexer import Lexer, TokenType
 from lua_minifier.core.string_minifier import minify_number, minify_string
 
 
@@ -145,4 +146,33 @@ def test_known_bare_cr_long_string_bytes(runtime, tmp_path):
     version = execute(runtime, "print(_VERSION)", tmp_path)
     expected = b"4\n13\n97\n13\n98\n" if b"Luau" in version else b"3\n97\n10\n98\n"
     assert execute(runtime, source, tmp_path) == expected
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+@pytest.mark.parametrize(("literal", "expected"), [
+    ("1e1_0", b"10000000000\n"),
+    ("1E+1_0", b"10000000000\n"),
+    ("1e-0_1", b"0.1\n"),
+    ("1_0e0_1", b"100\n"),
+    ("1_000", b"1000\n"),
+    ("0xF_F", b"255\n"),
+    ("0b1_010", b"10\n"),
+])
+def test_luau_numeric_separators_execute(runtime, tmp_path, literal, expected):
+    if "luau" not in Path(runtime).name:
+        pytest.skip("Numeric separators are Luau syntax")
+    source = f"print({literal})"
+    assert execute(runtime, source, tmp_path) == expected
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+@pytest.mark.parametrize("literal", ["1e1_0", "1e-0_1", "0x1p+0_1"])
+def test_exponent_separator_is_part_of_numeric_token(literal):
+    tokens = [token for token in Lexer(literal).tokenize() if token.type != TokenType.EOF]
+    assert [(token.type, token.value) for token in tokens] == [(TokenType.NUMBER, literal)]
+
+
+def test_identifier_after_exponent_stays_separate(runtime, tmp_path):
+    source = "local _0=7;print(1e1,_0)"
+    expected = execute(runtime, source, tmp_path)
     assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected

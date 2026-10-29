@@ -313,7 +313,7 @@ class Lexer:
                 buf.append(self._advance())
                 if self.pos < len(self.source) and self._peek() in ("+", "-"):
                     buf.append(self._advance())
-                while self.pos < len(self.source) and self._peek().isdigit():
+                while self.pos < len(self.source) and (self._peek().isdigit() or self._peek() == "_"):
                     buf.append(self._advance())
         else:
             while self.pos < len(self.source) and (self._peek().isdigit() or self._peek() == "_"):
@@ -326,7 +326,7 @@ class Lexer:
                 buf.append(self._advance())
                 if self.pos < len(self.source) and self._peek() in ("+", "-"):
                     buf.append(self._advance())
-                while self.pos < len(self.source) and self._peek().isdigit():
+                while self.pos < len(self.source) and (self._peek().isdigit() or self._peek() == "_"):
                     buf.append(self._advance())
         return Token(TokenType.NUMBER, "".join(buf), line, col)
 
