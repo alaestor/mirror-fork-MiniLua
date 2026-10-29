@@ -41,12 +41,11 @@ def discover_files(patterns: List[str], recursive: bool = False) -> List[Path]:
 
 def read_source(path: Path) -> str:
     """
-    Read a Lua source file. Raises FileNotFoundError or IOError on failure.
+    Read source without translating newlines or losing non-UTF-8 literal bytes.
+    Raises FileNotFoundError or IOError on failure.
     """
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="latin-1")
+    with path.open("r", encoding="utf-8", errors="surrogateescape", newline="") as source:
+        return source.read()
 
 
 def write_output(path: Path, content: str, overwrite: bool = False) -> Path:
@@ -58,7 +57,8 @@ def write_output(path: Path, content: str, overwrite: bool = False) -> Path:
     if not overwrite and path.exists():
         raise FileExistsError(f"Output file already exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    with path.open("w", encoding="utf-8", errors="surrogateescape", newline="") as output:
+        output.write(content)
     return path
 
 

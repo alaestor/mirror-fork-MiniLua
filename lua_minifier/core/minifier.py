@@ -145,7 +145,7 @@ class Minifier:
                 tokens_processed=0,
             )
 
-        original_size = len(source.encode("utf-8"))
+        original_size = len(source.encode("utf-8", errors="surrogateescape"))
         errors: List[str] = []
 
         # Lex
@@ -169,7 +169,7 @@ class Minifier:
         # Assemble
         output = self._assemble(tokens)
 
-        minified_size = len(output.encode("utf-8"))
+        minified_size = len(output.encode("utf-8", errors="surrogateescape"))
         return MinifyResult(
             output=output,
             original_size=original_size,
