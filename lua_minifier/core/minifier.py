@@ -57,14 +57,9 @@ _REAL_TYPES = frozenset({
     TokenType.NAME, TokenType.KEYWORD, TokenType.OP,
 })
 
-# Punctuation that never needs a trailing space
-_NO_SPACE_AFTER  = frozenset("([{,;~")
-# Punctuation that never needs a leading space
-_NO_SPACE_BEFORE = frozenset(")]},;:")
-
-# Keywords that can be followed by operators/punctuation without needing a space
-_KEYWORD_NO_SPACE_BEFORE = frozenset({
-    ")", "]", ",", ";", ".", ":", "::",
+_COMPOUND_OPERATORS = frozenset({
+    "..", "//", "==", "~=", "<=", ">=", "<<", ">>", "->", "::",
+    "+=", "-=", "*=", "/=", "%=", "^=", "&=", "|=",
 })
 
 
@@ -93,19 +88,15 @@ def _needs_separator(a: Token, b: Token) -> bool:
     av = a.value
     bv = b.value
 
-    # Fast exits for common punctuation
-    if av[-1] in _NO_SPACE_AFTER:
-        return False
-    if bv[0] in _NO_SPACE_BEFORE:
-        return False
-
     # Two word-char tokens always need a space
     if _is_word_char(av[-1]) and _is_word_char(bv[0]):
         return True
 
     # Number followed by '..'
     # "1.." could be mis-lexed as float "1." then "." in some Lua versions
-    if a.type == TokenType.NUMBER and bv.startswith(".."):
+    if a.type == TokenType.NUMBER and (
+        bv.startswith(".") or b.type in (TokenType.NAME, TokenType.KEYWORD)
+    ):
         return True
 
     # '-' followed by '-' → would form a comment
@@ -132,7 +123,11 @@ def _needs_separator(a: Token, b: Token) -> bool:
 
     # '.' followed by '.' (single dot then another)
     # prevents accidentally forming ".." or "..."
-    if av == "." and bv[0] == ".":
+    if av[-1] == "." and bv[0] == ".":
+        return True
+
+    # e.g. an attribute's closing '>' followed by assignment '='.
+    if a.type == b.type == TokenType.OP and av[-1] + bv[0] in _COMPOUND_OPERATORS:
         return True
 
     return False
