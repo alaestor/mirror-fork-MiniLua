@@ -238,11 +238,11 @@ class Lexer:
                 continue
             if ch == quote:
                 buf.append(self._advance())
-                break
+                return Token(TokenType.STRING, "".join(buf), line, col)
             if ch == "\n":
                 raise LexerError("Unfinished string", self.line, self.col)
             buf.append(self._advance())
-        return Token(TokenType.STRING, "".join(buf), line, col)
+        raise LexerError("Unfinished string", line, col)
 
     def _read_number(self, line: int, col: int) -> Token:
         buf = []
