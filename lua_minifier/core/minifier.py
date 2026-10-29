@@ -193,7 +193,8 @@ class Minifier:
 
             # Comments
             if tok.type in (TokenType.COMMENT, TokenType.LONG_COMMENT):
-                if opts.remove_comments:
+                # The initial interpreter directive is needed for direct execution.
+                if opts.remove_comments and not tok.value.startswith("#!"):
                     continue
                 result.append(tok)
                 continue

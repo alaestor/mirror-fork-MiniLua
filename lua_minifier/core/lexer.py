@@ -130,6 +130,13 @@ class Lexer:
         start_line, start_col = self.line, self.col
         ch = self._peek()
 
+        # File loaders treat an initial interpreter directive as a line comment.
+        if self.pos == 0 and self.source.startswith("#!"):
+            buf = []
+            while self.pos < len(self.source) and self._peek() not in "\r\n":
+                buf.append(self._advance())
+            return Token(TokenType.COMMENT, "".join(buf), start_line, start_col)
+
         # Whitespace
         if ch in " \t\v\f":
             return self._read_spaces(start_line, start_col)
