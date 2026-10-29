@@ -92,8 +92,7 @@ def _needs_separator(a: Token, b: Token) -> bool:
     if _is_word_char(av[-1]) and _is_word_char(bv[0]):
         return True
 
-    # Number followed by '..'
-    # "1.." could be mis-lexed as float "1." then "." in some Lua versions
+    # A numeral can absorb dots or the start of an identifier.
     if a.type == TokenType.NUMBER and (
         bv.startswith(".") or b.type in (TokenType.NAME, TokenType.KEYWORD)
     ):
@@ -138,10 +137,10 @@ class Minifier:
         self.options = options or MinifyOptions()
 
     def minify(self, source: str) -> MinifyResult:
-        if not source or not source.strip():
+        if not source:
             return MinifyResult(
                 output="\n",
-                original_size=len(source.encode("utf-8")),
+                original_size=0,
                 minified_size=1,
                 tokens_processed=0,
             )
@@ -210,8 +209,7 @@ class Minifier:
             if tok.type == TokenType.NEWLINE:
                 if opts.remove_whitespace and not opts.keep_newlines:
                     continue
-                if opts.keep_newlines:
-                    result.append(tok)
+                result.append(tok)
                 continue
 
             # String literals
@@ -254,28 +252,30 @@ class Minifier:
         parts: List[str] = []
         prev: Optional[Token] = None   # last REAL token emitted
 
-        for tok in tokens:
+        for index, tok in enumerate(tokens):
             if tok.type == TokenType.EOF:
                 break
 
-            # Newlines (when keep_newlines is on)
-            if tok.type == TokenType.NEWLINE and self.options.keep_newlines:
-                parts.append("\n")
+            # Only newlines retained by the transform pass reach this point.
+            if tok.type == TokenType.NEWLINE:
+                parts.append(tok.value)
                 prev = None   # newline acts as implicit separator
                 continue
 
-            # Comments kept verbatim — emit with a trailing newline so they
-            # don't merge with the next token on the same line.
+            # A kept short comment needs a terminator if its newline was removed.
+            # Long comments already delimit themselves and need no extra layout.
             if tok.type in (TokenType.COMMENT, TokenType.LONG_COMMENT):
                 parts.append(tok.value)
-                parts.append("\n")
+                if (tok.type == TokenType.COMMENT and
+                        (index + 1 == len(tokens) or tokens[index + 1].type != TokenType.NEWLINE)):
+                    parts.append("\n")
                 prev = None   # reset; comment + newline acts as separator
                 continue
 
             # Spaces kept verbatim (remove_whitespace=False)
             if tok.type == TokenType.SPACE:
                 parts.append(tok.value)
-                # Don't update prev — space is trivia, not a real token
+                prev = None  # Existing whitespace already separates real tokens.
                 continue
 
             # Skip remaining trivia (NEWLINE when keep_newlines=False, etc.)
@@ -289,4 +289,6 @@ class Minifier:
             prev = tok
 
         result = "".join(parts)
+        if not self.options.remove_whitespace or self.options.keep_newlines:
+            return result if result.endswith(("\n", "\r")) else result + "\n"
         return result.rstrip("\n") + "\n"
