@@ -13,10 +13,15 @@
 
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Hallucinated Slop Edition](https://img.shields.io/badge/Hallucinated-%E2%80%94Slop%20Edition%E2%80%94-orange)
 
 </div>
 
 ---
+
+## Provenance
+
+An emergency fork of [github:aradooo/MiniLua](https://github.com/aradooo/MiniLua) after the author's account vanished; recovered from a production deployment so the git history was lost. The initial commit represnts the last known original state of the project. Since then, I've sloppityslopslopped a codebase audit and hallucinated alleged fixes and tests for the allegedly discovered problems.
 
 ## Overview
 
@@ -24,7 +29,7 @@
 
 Works with **Lua 5.1, 5.2, 5.3, 5.4** and **Luau** (Roblox), including executor/exploit environments.
 
-**Typical savings: 40–60%** on real-world scripts.
+**Typical savings: 40–60%** on real-world scripts. (according to the original author)
 
 ---
 
@@ -52,6 +57,17 @@ pip install minilua
 ```
 
 **Requirements:** Python 3.8+
+
+### Nix
+
+From a checkout, with Nix flakes enabled:
+
+```sh
+nix run . -- script.lua --stdout
+nix build                         # result/bin/minilua
+nix develop                       # Python, pytest, Lua, Luau
+nix flake check                   # Tests with Lua 5.1–5.4 and Luau
+```
 
 ---
 
@@ -289,7 +305,7 @@ Source code
      ▼
 ┌──────────────┐
 │   Renamer    │  (optional) Parser-backed binding analysis
-│             │  Resolves local declarations and references
+│              │  Resolves local declarations and references
 └──────────────┘
      │
      ▼
@@ -363,4 +379,4 @@ The tests cover tokenization, literal handling, minification, renaming, CLI outp
 
 ## License
 
-MIT © Ardo
+MIT © Ardo, and Weissman's GPT subscription 2026
