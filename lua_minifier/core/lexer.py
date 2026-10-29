@@ -13,6 +13,7 @@ class TokenType(Enum):
     # Literals
     NUMBER      = auto()
     STRING      = auto()
+    INTERPOLATED_STRING = auto()
     NAME        = auto()
     
     # Keywords
@@ -153,6 +154,9 @@ class Lexer:
         if ch in ('"', "'"):
             return self._read_short_string(start_line, start_col)
 
+        if ch == "`":
+            return self._read_interpolated_string(start_line, start_col)
+
         # Numbers
         if ch.isdigit() or (ch == "." and self._peek(1).isdigit()):
             return self._read_number(start_line, start_col)
@@ -163,9 +167,9 @@ class Lexer:
 
         # Multi-char operators (check 3-char BEFORE 2-char to avoid prefix clash)
         three = self.source[self.pos:self.pos + 3]
-        if three == "...":
+        if three in {"...", "//=", "..="}:
             self._advance(); self._advance(); self._advance()
-            return Token(TokenType.OP, "...", start_line, start_col)
+            return Token(TokenType.OP, three, start_line, start_col)
 
         two = self.source[self.pos:self.pos + 2]
         if two in {"..", "//", "==", "~=", "<=", ">=", "<<", ">>", "->", "::", "+=", "-=", "*=", "/=", "%=", "^=", "&=", "|="}:
@@ -258,8 +262,42 @@ class Lexer:
             buf.append(self._advance())
         raise LexerError("Unfinished string", line, col)
 
+    def _read_interpolated_string(self, line: int, col: int) -> Token:
+        """Keep literal text and embedded expressions intact, including trivia.
+
+        Expressions use normal token readers so braces inside quotes, nested
+        interpolations, long brackets, and comments cannot close an expression.
+        """
+        start = self.pos
+        self._advance()
+        while self.pos < len(self.source):
+            ch = self._advance()
+            if ch == "\\":
+                if self.pos < len(self.source):
+                    self._advance()
+            elif ch == "`":
+                return Token(TokenType.INTERPOLATED_STRING, self.source[start:self.pos], line, col)
+            elif ch == "{":
+                depth = 1
+                while depth and self.pos < len(self.source):
+                    tok = self._next_token()
+                    if tok.type == TokenType.OP:
+                        if tok.value == "{":
+                            depth += 1
+                        elif tok.value == "}":
+                            depth -= 1
+                if depth:
+                    raise LexerError("Unfinished interpolated string expression", line, col)
+        raise LexerError("Unfinished interpolated string", line, col)
+
     def _read_number(self, line: int, col: int) -> Token:
         buf = []
+        # Luau binary integers. Preserve spelling for the literal transformer.
+        if self._peek() == "0" and self._peek(1) in ("b", "B"):
+            buf.extend((self._advance(), self._advance()))
+            while self.pos < len(self.source) and self._peek() in "01_":
+                buf.append(self._advance())
+            return Token(TokenType.NUMBER, "".join(buf), line, col)
         # Hex
         if self._peek() == "0" and self._peek(1) in ("x", "X"):
             buf.append(self._advance())

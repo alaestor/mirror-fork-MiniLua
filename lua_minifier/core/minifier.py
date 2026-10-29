@@ -54,7 +54,7 @@ class MinifyError(Exception):
 # Tokens considered "real" content (not trivia)
 _REAL_TYPES = frozenset({
     TokenType.NUMBER, TokenType.STRING, TokenType.LONG_STRING,
-    TokenType.NAME, TokenType.KEYWORD, TokenType.OP,
+    TokenType.NAME, TokenType.KEYWORD, TokenType.OP, TokenType.INTERPOLATED_STRING,
 })
 
 _COMPOUND_OPERATORS = frozenset({
