@@ -236,7 +236,8 @@ def cli(
             print(result.output, end="")
         else:
             try:
-                write_output(out_path, result.output, overwrite=(overwrite or in_place))
+                replacing_source = in_place and out_path.resolve() == inp_path.resolve()
+                write_output(out_path, result.output, overwrite=(overwrite or replacing_source))
             except FileExistsError:
                 _err(f"Output exists: {out_path}  (use -f to overwrite)")
                 failed += 1

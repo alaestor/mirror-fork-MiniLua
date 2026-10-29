@@ -28,3 +28,28 @@ def test_stdin_can_create_new_output_without_overwrite(tmp_path):
     result = CliRunner().invoke(cli, ["-", "-o", str(destination), "-q"], input="print(42)")
     assert result.exit_code == 0, result.output
     assert destination.read_bytes() == b"print(42)\n"
+
+
+@pytest.mark.parametrize("overwrite", [False, True], ids=["refuse", "replace"])
+def test_in_place_cannot_authorize_replacing_an_unrelated_explicit_output(tmp_path, overwrite):
+    source = tmp_path / "input.lua"
+    source.write_bytes(b"print(42)")
+    destination = tmp_path / "existing.lua"
+    destination.write_bytes(b"unrelated original contents\n")
+    args = [str(source), "--in-place", "-o", str(destination), "-q"]
+    if overwrite:
+        args.append("--overwrite")
+
+    result = CliRunner().invoke(cli, args)
+
+    assert result.exit_code == (0 if overwrite else 1), result.output
+    assert destination.read_bytes() == (b"print(42)\n" if overwrite else b"unrelated original contents\n")
+    assert source.read_bytes() == b"print(42)"
+
+
+def test_in_place_explicit_source_output_can_replace_itself(tmp_path):
+    source = tmp_path / "input.lua"
+    source.write_bytes(b"print( 42 )")
+    result = CliRunner().invoke(cli, [str(source), "--in-place", "-o", str(source), "-q"])
+    assert result.exit_code == 0, result.output
+    assert source.read_bytes() == b"print(42)\n"
