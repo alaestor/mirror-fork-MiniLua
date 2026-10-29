@@ -148,8 +148,8 @@ class TestStringMinifier:
 
 
 class TestNumberMinifier:
-    def test_float_to_int(self):
-        assert minify_number("1.0") == "1"
+    def test_float_keeps_float_syntax(self):
+        assert minify_number("1.0") == "1."
 
     def test_leading_zero_float(self):
         r = minify_number("0.5")

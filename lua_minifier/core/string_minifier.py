@@ -7,7 +7,7 @@ Strategies:
   - Normalize escape sequences (\\97 → \\a, redundant escapes removed)
   - Choose the quote style that results in fewer escapes (' vs ")
   - Compact decimal/hex escape sequences
-  - Number: 1.0→1, 0.5→.5, 1e+03→1e3, 0x00FF→0xFF, Luau 1_000→1000
+  - Number: 1.0→1., 0.5→.5, 1e+03→1e3, 0x00FF→0xFF, Luau 1_000→1000
 """
 
 import re
@@ -93,24 +93,14 @@ def _compress_number(v: str) -> str:
         # Use uppercase hex digits for readability / convention
         return "0x" + stripped.upper()
 
-    # Try integer
-    try:
-        int_val = int(v, 0)
-        return str(int_val)
-    except ValueError:
-        pass
+    # Work on spelling only. Python floats lose Lua's integer/float distinction,
+    # overflow to infinity, and can round large integer literals.
+    if re.fullmatch(r"[+-]?[0-9]+", v):
+        sign = v[0] if v[0] in "+-" else ""
+        return sign + (v.lstrip("+-").lstrip("0") or "0")
 
-    # Float
-    try:
-        f = float(v)
-        candidates = []
-        for fmt in (repr(f), f"{f:g}", _compact_float_str(v)):
-            if fmt and _float_round_trips(fmt, f):
-                candidates.append(fmt)
-        if candidates:
-            return min(candidates, key=len)
-    except (ValueError, OverflowError):
-        pass
+    if re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", v):
+        return _compact_float_str(v)
 
     return v
 
@@ -135,7 +125,7 @@ def _compact_float_str(s: str) -> str:
     s = s.lower()
     if "e" in s:
         mantissa, exp = s.split("e", 1)
-        mantissa = _strip_trailing_zeros(mantissa)
+        mantissa = _strip_trailing_zeros(mantissa).rstrip(".")
         sign = "-" if exp.startswith("-") else ""
         digits = exp.lstrip("+-").lstrip("0") or "0"
         return f"{mantissa}e{sign}{digits}"
@@ -143,26 +133,17 @@ def _compact_float_str(s: str) -> str:
 
 
 def _strip_trailing_zeros(s: str) -> str:
-    """
-    1.500 → 1.5, 1.0 → 1, 0.5 → .5, -0.5 → -.5
-    """
+    """Trim insignificant decimal zeros without changing float syntax."""
     if "." not in s:
         return s
     s = s.rstrip("0")
-    if s.endswith("."):
-        s = s[:-1]               # "1." → "1"
     if s.startswith("0."):
-        s = s[1:]                # "0.5" → ".5"
+        s = s[1:]
     elif s.startswith("-0."):
-        s = "-" + s[2:]          # "-0.5" → "-.5"
-    return s or "0"
-
-
-def _float_round_trips(candidate: str, original: float) -> bool:
-    try:
-        return float(candidate) == original
-    except (ValueError, OverflowError):
-        return False
+        s = "-" + s[2:]
+    if s in (".", "-.", "+."):
+        return s.replace(".", "0.")
+    return s
 
 
 # ------------------------------------------------------------------ #

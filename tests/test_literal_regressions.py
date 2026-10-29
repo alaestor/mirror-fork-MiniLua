@@ -3,11 +3,12 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from lua_minifier.core import Minifier
-from lua_minifier.core.string_minifier import minify_string
+from lua_minifier.core.string_minifier import minify_number, minify_string
 
 
 @pytest.fixture(params=["lua", "luau"])
@@ -60,3 +61,24 @@ def test_known_string_byte_values(runtime, tmp_path, literal, expected):
     source = f"local s={literal};print(#s);for i=1,#s do print(string.byte(s,i)) end"
     assert execute(runtime, source, tmp_path) == expected
     assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+@pytest.mark.parametrize("literal", [
+    "1.0", "0.0", "-0.0", "1e309", "1e-999", "1e+03",
+    "0.5000", "9007199254740993.0", "9223372036854775807",
+    "9223372036854775808", "0009223372036854775807",
+    "0xFFFFFFFFFFFFFFFF", "0x1.8p+1", "0x1p-1074",
+])
+def test_numeric_runtime_behavior_survives_minification(runtime, tmp_path, literal):
+    if "luau" in Path(runtime).name and literal.startswith("0x") and "p" in literal:
+        pytest.skip("Luau does not support hexadecimal floats")
+    source = (f"local n={literal};print(n,tostring(n),1/n);"
+              "if math.type then print(math.type(n)) end")
+    expected = execute(runtime, source, tmp_path)
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+def test_numeric_compaction_still_removes_redundant_characters():
+    assert minify_number("0.5000") == ".5"
+    assert minify_number("1.000e+003") == "1e3"
+    assert minify_number("000123") == "123"
