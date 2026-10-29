@@ -205,7 +205,12 @@ class VariableRenamer:
             (preserve_names or set()) | LUA_KEYWORDS | _PROTECTED_GLOBALS
         )
         self._gen  = _name_generator()
-        self._used: Set[str] = set()
+        # Reserve all source identifiers, not just known library globals.
+        # This conservative superset of free names also protects unchanged
+        # locals and identifiers in scopes that are not being renamed.
+        self._used: Set[str] = {
+            token.value for token in tokens if token.type == TokenType.NAME
+        }
 
     # Public
     def rename(self) -> List[Token]:
