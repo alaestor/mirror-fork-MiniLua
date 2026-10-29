@@ -187,17 +187,34 @@ def cli(
         _err("No Lua/Luau files found matching the provided input(s).")
         sys.exit(1)
 
-    single_mode = len(lua_inputs) == 1 and output
+    if output and len(lua_inputs) != 1:
+        _err("--output requires exactly one input file.")
+        sys.exit(1)
+
+    planned_outputs = list(iter_files_with_output(lua_inputs, out_dir, suffix, in_place))
+    if output:
+        planned_outputs = [(lua_inputs[0], Path(output))]
+
+    # Reject ambiguous batches before writing anything, even with --overwrite.
+    if not stdout:
+        destinations = {}
+        sources = {path.resolve() for path in lua_inputs}
+        for source, destination in planned_outputs:
+            resolved = destination.resolve()
+            if resolved in destinations:
+                _err(f"Output collision: {destinations[resolved]} and {source} both target {destination}")
+                sys.exit(1)
+            if resolved in sources and resolved != source.resolve():
+                _err(f"Output collision: {destination} would replace another input file.")
+                sys.exit(1)
+            destinations[resolved] = source
 
     total_orig = 0
     total_mini = 0
     success = 0
     failed = 0
 
-    for inp_path, out_path in iter_files_with_output(lua_inputs, out_dir, suffix, in_place):
-        if single_mode:
-            out_path = Path(output)
-
+    for inp_path, out_path in planned_outputs:
         # Read
         try:
             source = read_source(inp_path)
