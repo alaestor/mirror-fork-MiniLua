@@ -9,6 +9,62 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Nix flake** — CLI packaging, a development shell, and checks running
+  the test suite against Lua 5.1–5.4 and Luau.
+- **Behavioral regression tests** — execute original and minified programs
+  with known expected results, including byte strings, scope boundaries,
+  and negative cases; exercise CLI streams and file operations.
+
+### Changed
+
+- **Local renaming** — replace keyword-based scope tracking with
+  parser-backed binding analysis. Unsupported syntax, including typed Luau
+  and interpolation, skips the entire rename pass with a warning in
+  `MinifyResult.errors` rather than partially rewriting names.
+- **Dialect-sensitive literals** — leave `\x`, `\u`, and `\z` string escapes
+  unchanged because their meanings differ between Lua dialects.
+- **README** — document fork provenance, Nix usage, and supported behavior;
+  remove universal semantic-equivalence claims and stale test counts.
+
+### Fixed
+
+- **Renamer scopes** — resolve initializer references, redeclarations,
+  closures, loop headers, repeat conditions, branches, recursive local
+  functions, and implicit method `self` using Lua binding rules.
+- **Renamer name collisions** — generated locals no longer capture globals
+  or preserved names, and table keys and member names remain unchanged.
+- **String bytes** — preserve high-byte values, decimal escape boundaries,
+  and long-string newline semantics across Lua dialects.
+- **Number literals** — preserve integer/float distinctions, signed zero,
+  large integer precision, overflow, and underflow without Python float
+  conversion.
+- **Lexer line handling** — recognize CR-only and paired line endings,
+  multiline `\z` whitespace, vertical tabs, and form feeds; reject
+  unterminated short strings instead of truncating them.
+- **Luau syntax** — preserve interpolated strings, binary literals,
+  exponent separators, and three-character compound assignment operators.
+- **Token boundaries** — keep concatenation, leading-dot numbers, long
+  brackets, comparison operators, and retained comments from merging into
+  different tokens or swallowing executable code.
+- **Whitespace preservation** — retain source spaces and line breaks when
+  whitespace removal is disabled, without inserting duplicate separators.
+- **Shebang scripts** — retain the interpreter directive and its line
+  boundary so minified files still execute through file loaders and directly.
+- **File encoding** — read and write raw non-UTF-8 literal bytes and original
+  newline spellings without transcoding; report physical byte sizes.
+- **Overwrite protection** — stdin output now requires `--overwrite` for
+  existing files. `--in-place` no longer authorizes overwriting an unrelated
+  explicit output path.
+- **CLI streams** — send banners, diagnostics, and statistics to stderr,
+  leaving stdout suitable for piping generated source.
+- **File discovery** — include `.luau` files in directory scans, deduplicate
+  overlapping inputs, and handle empty matches without inventing paths.
+- **Batch destinations** — reject colliding outputs and destinations that
+  would replace another unread input before writing any files; require a
+  single input for `--output`.
+
 ---
 
 ## [1.1.0] — 2025-05-22
