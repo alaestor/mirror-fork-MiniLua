@@ -125,13 +125,11 @@ class TestStringMinifier:
         result = minify_string(r'"\97\98\99"')
         assert "abc" in result
 
-    def test_hex_escape_to_char(self):
-        result = minify_string(r'"\x61\x62"')
-        assert "ab" in result
+    def test_hex_escape_preserves_dialect_semantics(self):
+        assert minify_string(r'"\x61\x62"') == r'"\x61\x62"'
 
     def test_unicode_escape(self):
-        result = minify_string(r'"\u{41}"')   # \u{41} = 'A'
-        assert "A" in result
+        assert minify_string(r'"\u{41}"') == r'"\u{41}"'
 
     def test_long_string_with_null_kept(self):
         # Content with \0 must not be converted to short string

@@ -34,6 +34,8 @@ def execute(runtime, source, tmp_path):
     r'"\255é\0012"', r'"a\n\t\\\"b"',
 ])
 def test_string_bytes_survive_minification(runtime, tmp_path, literal):
+    if r"\u{" in literal and execute(runtime, "print(_VERSION)", tmp_path).strip() == b"Lua 5.2":
+        pytest.skip("Lua 5.2 does not support Unicode escapes")
     source = f"local s={literal};print(#s);for i=1,#s do print(string.byte(s,i)) end"
     expected = execute(runtime, source, tmp_path)
     result = Minifier().minify(source).output
@@ -72,6 +74,9 @@ def test_known_string_byte_values(runtime, tmp_path, literal, expected):
 def test_numeric_runtime_behavior_survives_minification(runtime, tmp_path, literal):
     if "luau" in Path(runtime).name and literal.startswith("0x") and "p" in literal:
         pytest.skip("Luau does not support hexadecimal floats")
+    if (literal.startswith("0x") and "p" in literal
+            and execute(runtime, "print(_VERSION)", tmp_path).strip() == b"Lua 5.1"):
+        pytest.skip("Lua 5.1 does not support hexadecimal floats")
     source = (f"local n={literal};print(n,tostring(n),1/n);"
               "if math.type then print(math.type(n)) end")
     expected = execute(runtime, source, tmp_path)
@@ -82,3 +87,31 @@ def test_numeric_compaction_still_removes_redundant_characters():
     assert minify_number("0.5000") == ".5"
     assert minify_number("1.000e+003") == "1e3"
     assert minify_number("000123") == "123"
+
+
+@pytest.mark.parametrize("literal", [
+    r'"\x41"', r'"\u{41}"', r'"a\z  b"',
+    '"a\\z \t\v\f\r\n b"',
+])
+def test_dialect_sensitive_escapes_preserve_original(runtime, tmp_path, literal):
+    version = execute(runtime, "print(_VERSION)", tmp_path)
+    if b"Lua 5.2" in version and r"\u{" in literal:
+        pytest.skip("Lua 5.2 does not support Unicode escapes")
+    if b"Lua 5.1" in version and "\n" in literal:
+        pytest.skip("Lua 5.1 does not support multiline whitespace-skipping escapes")
+    source = f"local s={literal};print(#s);for i=1,#s do print(string.byte(s,i)) end"
+    expected = execute(runtime, source, tmp_path)
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+    assert minify_string(literal) == literal
+
+
+def test_hex_escape_has_runtime_specific_bytes(runtime, tmp_path):
+    version = execute(runtime, "print(_VERSION)", tmp_path)
+    expected = b"3\n120\n52\n49\n" if b"Lua 5.1" in version else b"1\n65\n"
+    source = r'local s="\x41";print(#s);for i=1,#s do print(string.byte(s,i)) end'
+    assert execute(runtime, Minifier().minify(source).output, tmp_path) == expected
+
+
+def test_escaped_backslash_does_not_disable_portable_compression():
+    literal = r'"\\x\065\066\067"'
+    assert len(minify_string(literal)) < len(literal)

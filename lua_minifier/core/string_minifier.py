@@ -153,7 +153,7 @@ def _strip_trailing_zeros(s: str) -> str:
 def _decode_short_string(inner: str, quote: str) -> bytes:
     """
     Decode Lua bytes. Latin-1 fragments preserve byte values until joining.
-    Handles: \\a \\b \\f \\n \\r \\t \\v \\\\ \\' \\" \\xHH \\u{H+} \\ddd \\z
+    Dialect-sensitive escapes remain unchanged through the public fallback.
     """
     result = []
     i = 0
@@ -191,36 +191,10 @@ def _decode_short_string(inner: str, quote: str) -> bytes:
             i += 1
             if i < length and inner[i] == "\n":
                 i += 1
-        elif esc == "x":
-            # \xHH — exactly two hex digits
-            hex2 = inner[i+1:i+3]
-            if len(hex2) == 2 and all(c in "0123456789abcdefABCDEF" for c in hex2):
-                result.append(chr(int(hex2, 16)))
-                i += 3
-            else:
-                raise ValueError("malformed hexadecimal escape")
-        elif esc == "u":
-            # \u{HHHH}
-            if i + 1 < length and inner[i+1] == "{":
-                end = inner.find("}", i + 2)
-                if end != -1:
-                    code_str = inner[i+2:end]
-                    try:
-                        if not re.fullmatch(r"[0-9a-fA-F]+", code_str):
-                            raise ValueError("malformed Unicode escape")
-                        result.append(chr(int(code_str, 16)).encode("utf-8").decode("latin-1"))
-                        i = end + 1
-                    except (ValueError, OverflowError):
-                        raise ValueError("unsupported Unicode escape")
-                else:
-                    raise ValueError("unsupported Unicode escape")
-            else:
-                raise ValueError("unsupported Unicode escape")
-        elif esc == "z":
-            # \z skips following whitespace
-            i += 1
-            while i < length and inner[i] in " \t\n\r":
-                i += 1
+        elif esc in "xuz":
+            # Lua 5.1 treats these literally; newer dialects interpret them.
+            # With no target dialect, only keeping the source is safe.
+            raise ValueError("dialect-sensitive escape")
         elif esc in "0123456789":
             # \ddd — up to three decimal digits, value 0-255
             digits = ""
