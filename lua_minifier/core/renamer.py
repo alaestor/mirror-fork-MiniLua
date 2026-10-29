@@ -372,6 +372,27 @@ class VariableRenamer:
         n      = self.n
         stack: List[Scope] = [root]
         result: List[Token] = []
+        # Member names and record keys are not lexical references. Track
+        # delimiters so commas in calls/computed keys are not field separators.
+        significant = [i for i, t in enumerate(toks) if t.type not in _TRIVIA]
+        fields = set()
+        delimiters = []
+        previous = ""
+        for position, index in enumerate(significant):
+            token = toks[index]
+            following = (toks[significant[position + 1]].value
+                         if position + 1 < len(significant) else "")
+            if token.type == TokenType.NAME and (
+                previous in (".", ":") or
+                (delimiters and delimiters[-1] == "{" and
+                 previous in ("{", ",", ";") and following == "=")
+            ):
+                fields.add(index)
+            if token.value in ("(", "[", "{"):
+                delimiters.append(token.value)
+            elif token.value in (")", "]", "}") and delimiters:
+                delimiters.pop()
+            previous = token.value
 
         def cur() -> Scope:
             return stack[-1]
@@ -396,7 +417,7 @@ class VariableRenamer:
                 elif kw in ("end", "until"):
                     pop()
 
-            if tok.type == TokenType.NAME:
+            if tok.type == TokenType.NAME and i not in fields:
                 renamed = cur().lookup(tok.value)
                 if renamed is not None and tok.value not in self.preserve:
                     tok = Token(tok.type, renamed, tok.line, tok.col)

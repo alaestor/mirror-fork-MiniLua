@@ -49,3 +49,15 @@ def test_preserved_short_local_cannot_be_captured(runtime, tmp_path):
     assert_execution(runtime, tmp_path,
                      "local a=10; local value=2; print(a+value)", b"12\n",
                      preserve_names={"a"})
+
+
+@pytest.mark.parametrize(("source", "expected"), [
+    ('local x=1; local t={x=2}; print(t["x"],t.x,x)', b"2\t2\t1\n"),
+    ('local x=3; local t={x=2,[x]=4}; print(t["x"],t[x])', b"2\t4\n"),
+    ('local x=3; local t={nested={x=2},x=x}; print(t.nested["x"],t["x"])', b"2\t3\n"),
+    ('local x=3; local t={x=0}; t.x=x; print(t["x"])', b"3\n"),
+    ('local x=3; local t={x=function(self) return 9 end}; print(t["x"](t),t:x(),x)', b"9\t9\t3\n"),
+    ('local x=3; local t={x=2; y=x}; print(t["x"],t.y)', b"2\t3\n"),
+])
+def test_table_keys_and_members_are_not_variables(runtime, tmp_path, source, expected):
+    assert_execution(runtime, tmp_path, source, expected)
