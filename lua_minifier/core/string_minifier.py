@@ -47,8 +47,11 @@ def minify_string(token_value: str) -> str:
         if quote not in ('"', "'"):
             return token_value
 
+        if len(token_value) < 2 or token_value[-1] != quote:
+            return token_value
         inner = _decode_short_string(token_value[1:-1], quote)
-        return _encode_short_string(inner)
+        encoded = _encode_short_string(inner)
+        return min((encoded, token_value), key=lambda value: len(value.encode("utf-8")))
     except Exception:
         # Never crash — return original token on any parse error
         return token_value
@@ -166,9 +169,9 @@ def _float_round_trips(candidate: str, original: float) -> bool:
 #  String decode / encode                                            #
 # ------------------------------------------------------------------ #
 
-def _decode_short_string(inner: str, quote: str) -> str:
+def _decode_short_string(inner: str, quote: str) -> bytes:
     """
-    Decode all escape sequences in a Lua short string body to a Python str.
+    Decode Lua bytes. Latin-1 fragments preserve byte values until joining.
     Handles: \\a \\b \\f \\n \\r \\t \\v \\\\ \\' \\" \\xHH \\u{H+} \\ddd \\z
     """
     result = []
@@ -178,13 +181,15 @@ def _decode_short_string(inner: str, quote: str) -> str:
     while i < length:
         ch = inner[i]
         if ch != "\\":
-            result.append(ch)
+            if ch == quote or ch in "\r\n":
+                raise ValueError("unescaped quote or newline")
+            result.append(ch.encode("utf-8").decode("latin-1"))
             i += 1
             continue
 
         i += 1
         if i >= length:
-            break
+            raise ValueError("unfinished escape")
 
         esc = inner[i]
 
@@ -212,7 +217,7 @@ def _decode_short_string(inner: str, quote: str) -> str:
                 result.append(chr(int(hex2, 16)))
                 i += 3
             else:
-                result.append("x"); i += 1  # malformed, keep as-is
+                raise ValueError("malformed hexadecimal escape")
         elif esc == "u":
             # \u{HHHH}
             if i + 1 < length and inner[i+1] == "{":
@@ -220,42 +225,43 @@ def _decode_short_string(inner: str, quote: str) -> str:
                 if end != -1:
                     code_str = inner[i+2:end]
                     try:
-                        result.append(chr(int(code_str, 16)))
+                        if not re.fullmatch(r"[0-9a-fA-F]+", code_str):
+                            raise ValueError("malformed Unicode escape")
+                        result.append(chr(int(code_str, 16)).encode("utf-8").decode("latin-1"))
                         i = end + 1
                     except (ValueError, OverflowError):
-                        result.append("u"); i += 1
+                        raise ValueError("unsupported Unicode escape")
                 else:
-                    result.append("u"); i += 1
+                    raise ValueError("unsupported Unicode escape")
             else:
-                result.append("u"); i += 1
+                raise ValueError("unsupported Unicode escape")
         elif esc == "z":
             # \z skips following whitespace
             i += 1
             while i < length and inner[i] in " \t\n\r":
                 i += 1
-        elif esc.isdigit():
+        elif esc in "0123456789":
             # \ddd — up to three decimal digits, value 0-255
             digits = ""
-            while i < length and inner[i].isdigit() and len(digits) < 3:
+            while i < length and inner[i] in "0123456789" and len(digits) < 3:
                 digits += inner[i]
                 i += 1
             val = int(digits)
             if val > 255:
-                # Out of byte range — keep as decimal escape
-                result.append(f"\\{digits}")
+                # Invalid bytes must leave the original literal unchanged.
+                raise ValueError("decimal escape outside byte range")
             else:
                 result.append(chr(val))
         else:
-            # Unknown escape — keep literally
-            result.append(esc)
-            i += 1
+            # Dialects differ on unknown escapes; preserve the source token.
+            raise ValueError("unsupported escape")
 
-    return "".join(result)
+    return "".join(result).encode("latin-1")
 
 
-def _encode_short_string(s: str) -> str:
+def _encode_short_string(s: bytes) -> str:
     """
-    Encode a Python str back to the shortest valid Lua string literal,
+    Encode Lua bytes back to the shortest valid Lua string literal,
     choosing between single and double quotes automatically.
     """
     single = _encode_with_quote(s, "'")
@@ -263,22 +269,20 @@ def _encode_short_string(s: str) -> str:
     return single if len(single) <= len(double) else double
 
 
-def _encode_with_quote(s: str, quote: str) -> str:
+def _encode_with_quote(s: bytes, quote: str) -> str:
     buf = [quote]
-    for ch in s:
-        code = ord(ch)
+    for i, code in enumerate(s):
+        ch = chr(code)
         if ch == quote:
             buf.append("\\" + quote)
         elif ch == "\\":
             buf.append("\\\\")
         elif ch in _NAMED_ESCAPES:
             buf.append(_NAMED_ESCAPES[ch])
-        elif code < 32 or code == 127:
-            # Use decimal escape; use short form where possible
-            buf.append(f"\\{code}")
-        elif code > 127:
-            # Keep high-byte chars as-is (Lua strings are byte strings)
-            buf.append(ch)
+        elif code < 32 or code >= 127:
+            # Lua consumes at most three decimal digits, including source digits.
+            followed_by_digit = i + 1 < len(s) and 48 <= s[i + 1] <= 57
+            buf.append(f"\\{code:03d}" if followed_by_digit else f"\\{code}")
         else:
             buf.append(ch)
     buf.append(quote)
@@ -325,7 +329,7 @@ def _compress_long_string(s: str) -> str:
     if "\0" in content:
         return s
 
-    short = _encode_short_string(content)
+    short = _encode_short_string(content.encode("utf-8"))
 
     # Only use short form if it's actually shorter or equal length
     return short if len(short) <= len(s) else s
