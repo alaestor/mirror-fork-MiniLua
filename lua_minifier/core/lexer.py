@@ -76,6 +76,7 @@ class Lexer:
         self.pos = 0
         self.line = 1
         self.col = 1
+        self._newline_pending = ""
         self.tokens: List[Token] = []
 
     # ------------------------------------------------------------------ #
@@ -101,10 +102,15 @@ class Lexer:
     def _advance(self) -> str:
         ch = self.source[self.pos]
         self.pos += 1
-        if ch == "\n":
-            self.line += 1
+        if ch in "\r\n":
+            if self._newline_pending and ch != self._newline_pending:
+                self._newline_pending = ""
+            else:
+                self.line += 1
+                self._newline_pending = ch
             self.col = 1
         else:
+            self._newline_pending = ""
             self.col += 1
         return ch
 
@@ -124,12 +130,14 @@ class Lexer:
         ch = self._peek()
 
         # Whitespace
-        if ch in " \t\r":
+        if ch in " \t\v\f":
             return self._read_spaces(start_line, start_col)
 
-        if ch == "\n":
-            self._advance()
-            return Token(TokenType.NEWLINE, "\n", start_line, start_col)
+        if ch in "\r\n":
+            value = self._advance()
+            if self._peek() in ("\r", "\n") and self._peek() != ch:
+                value += self._advance()
+            return Token(TokenType.NEWLINE, value, start_line, start_col)
 
         # Comments / long strings starting with '-' or '['
         if ch == "-" and self._peek(1) == "-":
@@ -174,7 +182,7 @@ class Lexer:
 
     def _read_spaces(self, line: int, col: int) -> Token:
         buf = []
-        while self.pos < len(self.source) and self._peek() in " \t\r":
+        while self.pos < len(self.source) and self._peek() in " \t\v\f":
             buf.append(self._advance())
         return Token(TokenType.SPACE, "".join(buf), line, col)
 
@@ -191,7 +199,7 @@ class Lexer:
 
         # short comment: read until end of line
         buf = ["--"]
-        while self.pos < len(self.source) and self._peek() != "\n":
+        while self.pos < len(self.source) and self._peek() not in "\r\n":
             buf.append(self._advance())
         return Token(TokenType.COMMENT, "".join(buf), line, col)
 
@@ -234,12 +242,15 @@ class Lexer:
             if ch == "\\" :
                 buf.append(self._advance())  # backslash
                 if self.pos < len(self.source):
-                    buf.append(self._advance())  # escaped char
+                    escaped = self._advance()
+                    buf.append(escaped)
+                    if escaped in "\r\n" and self._peek() in ("\r", "\n") and self._peek() != escaped:
+                        buf.append(self._advance())
                 continue
             if ch == quote:
                 buf.append(self._advance())
                 return Token(TokenType.STRING, "".join(buf), line, col)
-            if ch == "\n":
+            if ch in "\r\n":
                 raise LexerError("Unfinished string", self.line, self.col)
             buf.append(self._advance())
         raise LexerError("Unfinished string", line, col)
